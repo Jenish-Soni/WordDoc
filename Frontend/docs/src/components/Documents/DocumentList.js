@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { documentService } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import CreateDocumentModal from './CreateDocumentModal';
 import './DocumentList.css';
 
@@ -10,6 +11,7 @@ const DocumentList = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   useEffect(() => {
     loadDocuments();
@@ -39,6 +41,11 @@ const DocumentList = () => {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   const formatDate = (dateString) => {
     const options = { 
       year: 'numeric', 
@@ -62,10 +69,16 @@ const DocumentList = () => {
     <div className="documents-container">
       <div className="documents-header">
         <h1>My Documents</h1>
-        <button onClick={() => setIsModalOpen(true)} className="create-doc-button">
-          <span className="plus-icon">+</span>
-          New Document
-        </button>
+        <div className="header-actions">
+          <button onClick={() => setIsModalOpen(true)} className="create-doc-button">
+            <span className="plus-icon">+</span>
+            New Document
+          </button>
+          <button onClick={handleLogout} className="logout-button">
+            <i className="fas fa-sign-out-alt"></i>
+            Logout
+          </button>
+        </div>
       </div>
 
       <CreateDocumentModal
