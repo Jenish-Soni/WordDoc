@@ -73,34 +73,39 @@ io.use(async (socket, next) => {
 });
   
   
+// Redis document expiration time (in seconds)
+const REDIS_DOC_EXPIRY = 1800; // 1 hour
+
 io.on('connection', async (socket) => {
     console.log('New socket connection:', socket.id);
 
     socket.on('join-document', async ({ documentId }) => {
         try {
-            console.log('Joining document:', documentId); // Debug log
+            console.log('Joining document:', documentId);
 
-            // Validate documentId
             if (!documentId) {
                 throw new Error('Document ID is required');
             }
 
             // Check Redis first
             let content = await redis.get(`doc:${documentId}`);
-            console.log('Redis content:', content); // Debug log
+            console.log('Redis content:', content);
             
             if (!content) {
                 // If not in Redis, get from MongoDB
                 const document = await Document.findById(documentId);
-                console.log('MongoDB document:', document); // Debug log
+                console.log('MongoDB document:', document);
 
                 if (!document) {
                     socket.emit('error', { message: 'Document not found' });
                     return;
                 }
                 content = document.content;
-                // Cache in Redis
-                await redis.set(`doc:${documentId}`, content || '');
+                // Cache in Redis with expiration
+                await redis.setex(`doc:${documentId}`, REDIS_DOC_EXPIRY, content || '');
+            } else {
+                // Refresh expiration time when document is accessed
+                await redis.expire(`doc:${documentId}`, REDIS_DOC_EXPIRY);
             }
             
             socket.join(documentId);
@@ -114,22 +119,22 @@ io.on('connection', async (socket) => {
 
     socket.on('edit-document', async ({ documentId, content }) => {
         try {
-            console.log('Editing document:', documentId, 'Content:', content); // Debug log
+            console.log('Editing document:', documentId);
 
             if (!documentId) {
                 throw new Error('Document ID is required');
             }
 
-            // Update Redis immediately
-            await redis.set(`doc:${documentId}`, content);
-            console.log('Updated Redis for doc:', documentId); // Debug log
+            // Update Redis with new expiration
+            await redis.setex(`doc:${documentId}`, REDIS_DOC_EXPIRY, content);
+            console.log('Updated Redis for doc:', documentId);
             
-            // Update MongoDB (without debounce for now)
+            // Update MongoDB
             await Document.findByIdAndUpdate(documentId, {
                 content,
                 lastModified: new Date()
             });
-            console.log('Updated MongoDB for doc:', documentId); // Debug log
+            console.log('Updated MongoDB for doc:', documentId);
 
             // Broadcast to other clients
             socket.to(documentId).emit('document-update', {
@@ -146,20 +151,21 @@ io.on('connection', async (socket) => {
 
     socket.on('leave-document', async ({ documentId }) => {
         try {
-            console.log('Leaving document:', documentId); // Debug log
+            console.log('Leaving document:', documentId);
 
             if (!documentId) {
                 throw new Error('Document ID is required');
             }
 
-            // Save final version to MongoDB
+            // Get content from Redis before potential expiration
             const content = await redis.get(`doc:${documentId}`);
             if (content) {
+                // Save to MongoDB
                 await Document.findByIdAndUpdate(documentId, {
                     content,
                     lastModified: new Date()
                 });
-                console.log('Final save to MongoDB for doc:', documentId); // Debug log
+                console.log('Final save to MongoDB for doc:', documentId);
             }
             
             socket.leave(documentId);
