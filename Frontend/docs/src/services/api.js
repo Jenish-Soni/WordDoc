@@ -19,7 +19,7 @@ export const authService = {
         return response.data;
     },
     signup: async (username, password) => {
-        const response = await api.post('/auth/signup', { username, password });
+        const response = await api.post('/auth/register', { username, password });
         return response.data;
     }
 };
@@ -31,6 +31,18 @@ export const documentService = {
     },
     list: async () => {
         const response = await api.get('/api/documents/list');
+        return response.data;
+    },
+    getDocument: async (id) => {
+        const response = await api.get(`/api/documents/${id}`);
+        return response.data;
+    },
+    updateTitle: async (id, title) => {
+        const response = await api.patch(`/api/documents/${id}/title`, { title });
+        return response.data;
+    },
+    updateContent: async (id, content) => {
+        const response = await api.patch(`/api/documents/${id}/content`, { content });
         return response.data;
     }
 };

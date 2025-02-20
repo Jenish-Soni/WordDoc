@@ -23,7 +23,7 @@ if (!process.env.JWT_SECRET) {
 // CORS configuration for Express
 app.use(cors({
     origin: 'http://localhost:3000', // Frontend port
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'PATCH'],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -32,7 +32,7 @@ app.use(cors({
 const io = new Server(server, {
     cors: {
         origin: 'http://localhost:3000',
-        methods: ['GET', 'POST'],
+        methods: ['GET', 'POST', 'PATCH'],
         credentials: true,
     }
 });
@@ -47,7 +47,7 @@ app.use('/api/documents', documentRoutes);
 io.use(async (socket, next) => {
     try {
         const token = socket.handshake.auth.token;
-        console.log('Raw token received:', token); // Debug log
+        // console.log('Raw token received:', token); // Debug log
 
         if (!token) {
             console.error('No token provided in socket connection');
@@ -59,10 +59,10 @@ io.use(async (socket, next) => {
             ? token.split('Bearer ')[1] 
             : token;
             
-        console.log('Token to verify:', tokenString); // Debug log
+        // console.log('Token to verify:', tokenString); // Debug log
 
         const decoded = jwt.verify(tokenString, process.env.JWT_SECRET);
-        console.log('Successfully authenticated socket user:', decoded);
+        // console.log('Successfully authenticated socket user:', decoded);
         
         socket.user = decoded;
         next();
@@ -77,11 +77,11 @@ io.use(async (socket, next) => {
 const REDIS_DOC_EXPIRY = 1800; // 1 hour
 
 io.on('connection', async (socket) => {
-    console.log('New socket connection:', socket.id);
+    // console.log('New socket connection:', socket.id);
 
     socket.on('join-document', async ({ documentId }) => {
         try {
-            console.log('Joining document:', documentId);
+            // console.log('Joining document:', documentId);
 
             if (!documentId) {
                 throw new Error('Document ID is required');
@@ -89,12 +89,12 @@ io.on('connection', async (socket) => {
 
             // Check Redis first
             let content = await redis.get(`doc:${documentId}`);
-            console.log('Redis content:', content);
+            // console.log('Redis content:', content);
             
             if (!content) {
                 // If not in Redis, get from MongoDB
                 const document = await Document.findById(documentId);
-                console.log('MongoDB document:', document);
+                // console.log('MongoDB document:', document);
 
                 if (!document) {
                     socket.emit('error', { message: 'Document not found' });
@@ -110,7 +110,7 @@ io.on('connection', async (socket) => {
             
             socket.join(documentId);
             socket.emit('load-document', { content });
-            console.log(`User ${socket.user?.username} joined document ${documentId}`);
+            // console.log(`User ${socket.user?.username} joined document ${documentId}`);
         } catch (error) {
             console.error('Error joining document:', error);
             socket.emit('error', { message: error.message });
@@ -119,7 +119,7 @@ io.on('connection', async (socket) => {
 
     socket.on('edit-document', async ({ documentId, content }) => {
         try {
-            console.log('Editing document:', documentId);
+            // console.log('Editing document:', documentId);
 
             if (!documentId) {
                 throw new Error('Document ID is required');
@@ -127,14 +127,14 @@ io.on('connection', async (socket) => {
 
             // Update Redis with new expiration
             await redis.setex(`doc:${documentId}`, REDIS_DOC_EXPIRY, content);
-            console.log('Updated Redis for doc:', documentId);
+            // console.log('Updated Redis for doc:', documentId);
             
             // Update MongoDB
             await Document.findByIdAndUpdate(documentId, {
                 content,
                 lastModified: new Date()
             });
-            console.log('Updated MongoDB for doc:', documentId);
+            // console.log('Updated MongoDB for doc:', documentId);
 
             // Broadcast to other clients
             socket.to(documentId).emit('document-update', {
@@ -151,7 +151,7 @@ io.on('connection', async (socket) => {
 
     socket.on('leave-document', async ({ documentId }) => {
         try {
-            console.log('Leaving document:', documentId);
+            // console.log('Leaving document:', documentId);
 
             if (!documentId) {
                 throw new Error('Document ID is required');
@@ -165,11 +165,11 @@ io.on('connection', async (socket) => {
                     content,
                     lastModified: new Date()
                 });
-                console.log('Final save to MongoDB for doc:', documentId);
+                // console.log('Final save to MongoDB for doc:', documentId);
             }
             
             socket.leave(documentId);
-            console.log(`User ${socket.user?.username} left document ${documentId}`);
+            // console.log(`User ${socket.user?.username} left document ${documentId}`);
         } catch (error) {
             console.error('Error leaving document:', error);
         }

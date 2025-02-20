@@ -1,30 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { documentService } from '../../services/api';
+import CreateDocumentModal from './CreateDocumentModal';
+import './DocumentList.css';
 
 const DocumentList = () => {
   const [documents, setDocuments] = useState([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    loadDocuments();
+  }, []);
 
   const loadDocuments = async () => {
     try {
+      setLoading(true);
       const docs = await documentService.list();
-      console.log('Loaded documents:', docs);
       setDocuments(docs);
     } catch (error) {
       console.error('Error loading documents:', error);
       setError('Failed to load documents');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const createNewDocument = async () => {
+  const handleCreateDocument = async (title) => {
     try {
-      const title = prompt('Enter document title:') || 'Untitled Document';
       const response = await documentService.create(title);
-      console.log('Created document:', response);
-      
-      // Refresh the list and navigate to new document
       await loadDocuments();
       navigate(`/editor/${response.documentId}`);
     } catch (error) {
@@ -33,30 +39,62 @@ const DocumentList = () => {
     }
   };
 
-  useEffect(() => {
-    loadDocuments();
-  }, []);
+  const formatDate = (dateString) => {
+    const options = { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    return new Date(dateString).toLocaleDateString('en-US', options);
+  };
+
+  if (loading) {
+    return (
+      <div className="documents-container">
+        <div className="loading-spinner">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="documents-container">
-      <h1>My Documents</h1>
-      {error && <div className="error-message">{error}</div>}
-      
-      <button onClick={createNewDocument} className="create-doc-button">
-        Create New Document
-      </button>
-
-      <div className="documents-list">
-        {documents.map(doc => (
-          <div key={doc._id} className="document-item">
-            <div onClick={() => navigate(`/editor/${doc._id}`)} 
-                 className="document-link">
-              <h3>{doc.title}</h3>
-              <p>Last modified: {new Date(doc.lastModified).toLocaleString()}</p>
-            </div>
-          </div>
-        ))}
+      <div className="documents-header">
+        <h1>My Documents</h1>
+        <button onClick={() => setIsModalOpen(true)} className="create-doc-button">
+          <span className="plus-icon">+</span>
+          New Document
+        </button>
       </div>
+
+      <CreateDocumentModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleCreateDocument}
+      />
+
+      {error && <div className="error-message">{error}</div>}
+
+      {documents.length === 0 ? (
+        <div className="no-documents">
+          <p>No documents yet. Create your first document to get started!</p>
+        </div>
+      ) : (
+        <div className="documents-grid">
+          {documents.map(doc => (
+            <div key={doc._id} className="document-card" onClick={() => navigate(`/editor/${doc._id}`)}>
+              <div className="document-icon">
+                <i className="far fa-file-alt"></i>
+              </div>
+              <div className="document-info">
+                <h3 className="document-title">{doc.title}</h3>
+                <p className="document-date">Last modified: {formatDate(doc.lastModified)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
         // ... authentication logic ...
 
         // Log the secret being used (temporary for debugging)
-        console.log('Secret used for token creation:', process.env.JWT_SECRET);
+        // console.log('Secret used for token creation:', process.env.JWT_SECRET);
         
         const token = jwt.sign(
             { userId: user._id },
