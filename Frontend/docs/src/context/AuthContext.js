@@ -1,4 +1,4 @@
-import { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
@@ -6,22 +6,22 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [token, setToken] = useState(null);
 
+  useEffect(() => {
+    // Check for stored token on mount
+    const storedToken = localStorage.getItem('token');
+    if (storedToken) {
+      setToken(storedToken);
+      setIsAuthenticated(true);
+    }
+  }, []);
+
   const login = (newToken) => {
-    console.log('Setting new token in AuthContext:', newToken); // Debug log
-    
-    // Ensure token has Bearer prefix
-    const tokenWithBearer = newToken.startsWith('Bearer ') 
-      ? newToken 
-      : `Bearer ${newToken}`;
-    
-    setToken(tokenWithBearer);
+    setToken(newToken);
     setIsAuthenticated(true);
-    localStorage.setItem('token', tokenWithBearer);
-    console.log('Token stored:', tokenWithBearer); // Debug log
+    localStorage.setItem('token', newToken);
   };
 
   const logout = () => {
-    console.log('Logging out, clearing token'); // Debug log
     setToken(null);
     setIsAuthenticated(false);
     localStorage.removeItem('token');
@@ -39,4 +39,10 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext); 
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === null) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}; 

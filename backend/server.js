@@ -5,9 +5,11 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
-const redis = require('redis');
+const redis = require('./RedisClient');
 const { router: authRoutes, verifyToken } = require("./routes/authRoutes");
 const jwt = require('jsonwebtoken');
+const Document = require('./model/document');
+const documentRoutes = require('./routes/documentRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -35,19 +37,11 @@ const io = new Server(server, {
     }
 });
 
-// Redis client setup
-const redisClient = redis.createClient({
-    url: process.env.REDIS_URI
-});
-
-redisClient.on('error', err => console.log('Redis Client Error', err));
-redisClient.on('connect', () => console.log('🔥 Redis Connected!'));
-
-// Connect to Redis
-redisClient.connect();
-
 app.use(express.json());
 app.use("/auth", authRoutes);
+
+// Register document routes
+app.use('/api/documents', documentRoutes);
 
 // Socket.IO middleware for authentication
 io.use(async (socket, next) => {
@@ -79,44 +73,115 @@ io.use(async (socket, next) => {
 });
   
   
-io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
-  
-    socket.on('join-document', async (docId) => {
-      socket.join(docId);
-  
-      // Fetch document from Redis or MongoDB
-      let docContent = await redisClient.get(docId);
-      if (!docContent) {
-        const doc = await Document.findById(docId);
-        docContent = doc ? doc.content : '';
-        await redisClient.set(docId, docContent);
-      }
-  
-      socket.emit('load-document', docContent);
+io.on('connection', async (socket) => {
+    console.log('New socket connection:', socket.id);
+
+    socket.on('join-document', async ({ documentId }) => {
+        try {
+            console.log('Joining document:', documentId); // Debug log
+
+            // Validate documentId
+            if (!documentId) {
+                throw new Error('Document ID is required');
+            }
+
+            // Check Redis first
+            let content = await redis.get(`doc:${documentId}`);
+            console.log('Redis content:', content); // Debug log
+            
+            if (!content) {
+                // If not in Redis, get from MongoDB
+                const document = await Document.findById(documentId);
+                console.log('MongoDB document:', document); // Debug log
+
+                if (!document) {
+                    socket.emit('error', { message: 'Document not found' });
+                    return;
+                }
+                content = document.content;
+                // Cache in Redis
+                await redis.set(`doc:${documentId}`, content || '');
+            }
+            
+            socket.join(documentId);
+            socket.emit('load-document', { content });
+            console.log(`User ${socket.user?.username} joined document ${documentId}`);
+        } catch (error) {
+            console.error('Error joining document:', error);
+            socket.emit('error', { message: error.message });
+        }
     });
-  
-    socket.on('edit-document', async ({ docId, content }) => {
-      await redisClient.set(docId, content);
-      socket.to(docId).emit('update-document', content);
+
+    socket.on('edit-document', async ({ documentId, content }) => {
+        try {
+            console.log('Editing document:', documentId, 'Content:', content); // Debug log
+
+            if (!documentId) {
+                throw new Error('Document ID is required');
+            }
+
+            // Update Redis immediately
+            await redis.set(`doc:${documentId}`, content);
+            console.log('Updated Redis for doc:', documentId); // Debug log
+            
+            // Update MongoDB (without debounce for now)
+            await Document.findByIdAndUpdate(documentId, {
+                content,
+                lastModified: new Date()
+            });
+            console.log('Updated MongoDB for doc:', documentId); // Debug log
+
+            // Broadcast to other clients
+            socket.to(documentId).emit('document-update', {
+                documentId,
+                content,
+                userId: socket.user?.userId,
+                username: socket.user?.username
+            });
+        } catch (error) {
+            console.error('Error updating document:', error);
+            socket.emit('error', { message: error.message });
+        }
     });
-  
-    socket.on('save-document', async ({ docId, content }) => {
-      await Document.findByIdAndUpdate(docId, { content }, { upsert: true });
-      await redisClient.set(docId, content);
+
+    socket.on('leave-document', async ({ documentId }) => {
+        try {
+            console.log('Leaving document:', documentId); // Debug log
+
+            if (!documentId) {
+                throw new Error('Document ID is required');
+            }
+
+            // Save final version to MongoDB
+            const content = await redis.get(`doc:${documentId}`);
+            if (content) {
+                await Document.findByIdAndUpdate(documentId, {
+                    content,
+                    lastModified: new Date()
+                });
+                console.log('Final save to MongoDB for doc:', documentId); // Debug log
+            }
+            
+            socket.leave(documentId);
+            console.log(`User ${socket.user?.username} left document ${documentId}`);
+        } catch (error) {
+            console.error('Error leaving document:', error);
+        }
     });
-  
-    socket.on('disconnect', () => {
-      console.log('User disconnected:', socket.id);
+
+    socket.on('disconnect', async () => {
+        if (socket.updateTimeout) {
+            clearTimeout(socket.updateTimeout);
+        }
     });
-  });
+});
   
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
     console.log('\n🔄 Gracefully shutting down...');
     try {
-        await redisClient.disconnect();
+        await redis.quit();
         console.log('✅ Redis connection closed');
         
         server.close(() => {
