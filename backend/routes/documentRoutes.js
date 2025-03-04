@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Document = require('../model/document');
-const { verifyToken } = require('./authRoutes');
+const verifyToken = require('../middleware/verifyToken');
 
 // Create new document (endpoint will be /api/documents/create)
 router.post('/create', verifyToken, async (req, res) => {
@@ -32,13 +32,10 @@ router.post('/create', verifyToken, async (req, res) => {
 // Get user's documents
 router.get('/list', verifyToken, async (req, res) => {
     try {
-        // console.log('Fetching documents for user:', req.userId);
-        
         const documents = await Document.find({ owner: req.userId })
             .select('_id title lastModified')
             .sort({ lastModified: -1 });
-            
-        // console.log('Found documents:', documents.length);
+        
         res.json(documents);
     } catch (error) {
         console.error('Document list error:', error);

@@ -35,6 +35,13 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1h" }
     );
 
+    // Set cookie with token
+    res.cookie('token', token, {
+      httpOnly: true, // Prevents JavaScript access to the cookie
+      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+      maxAge: 24 * 60 * 60 * 1000 // Cookie expiration time (24 hours)
+    });
+
     // Return token with Bearer prefix
     res.json({ token: `Bearer ${token}` });
   } catch (error) {
@@ -102,6 +109,10 @@ router.post('/signup', async (req, res) => {
         console.error('Signup error:', error);
         res.status(500).json({ error: 'Error creating user' });
     }
+});
+
+router.get('/check-auth', verifyToken, (req, res) => {
+    res.json({ token: req.token }); // Send back the token if valid
 });
 
 module.exports = { router, verifyToken };

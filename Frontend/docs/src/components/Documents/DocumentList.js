@@ -20,11 +20,17 @@ const DocumentList = () => {
   const loadDocuments = async () => {
     try {
       setLoading(true);
-      const docs = await documentService.list();
-      setDocuments(docs);
+      const docs = await documentService.list();      
+      if (docs.length === 0) {
+        setDocuments([]);
+        setError('');
+      } else {
+        setDocuments(docs);
+        setError('');
+      }
     } catch (error) {
       console.error('Error loading documents:', error);
-      setError('Failed to load documents');
+      setError('Failed to load documents. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -36,7 +42,6 @@ const DocumentList = () => {
       await loadDocuments();
       navigate(`/editor/${response.documentId}`);
     } catch (error) {
-      console.error('Error creating document:', error);
       setError('Failed to create document');
     }
   };
@@ -89,9 +94,11 @@ const DocumentList = () => {
 
       {error && <div className="error-message">{error}</div>}
 
-      {documents.length === 0 ? (
+      {loading ? (
+        <div className="loading-spinner">Loading documents...</div>
+      ) : documents.length === 0 ? (
         <div className="no-documents">
-          <p>No documents yet. Create your first document to get started!</p>
+          <p>Congratulations! You've achieved the impossible: a document-free existence!</p>
         </div>
       ) : (
         <div className="documents-grid">

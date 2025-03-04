@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/api';
 
 const AuthContext = createContext();
@@ -8,43 +8,32 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(localStorage.getItem('token'));
-  const [loading, setLoading] = useState(false);
+  const [token, setToken] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = async (username, password) => {
-    try {
-      setLoading(true);
-      const response = await authService.login(username, password);
-      console.log('Login response:', response); // Debug log
-      
-      if (!response.token) {
-        throw new Error('No token received from server');
+  useEffect(() => {
+    // Check if the user is logged in by checking the cookie
+    const checkAuth = async () => {
+      try {
+        const response = await authService.checkAuth(); // Create this endpoint to verify token
+        setToken(response.token); // Set token if valid
+      } catch (error) {
+        console.error('Not authenticated:', error);
+      } finally {
+        setLoading(false);
       }
-      
-      localStorage.setItem('token', response.token);
-      setToken(response.token);
-      return response; // Return the response
-    } catch (error) {
-      console.error('Login error in context:', error);
-      throw error; // Re-throw the error to be caught by the component
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  const signup = async (username, password) => {
-    try {
-      setLoading(true);
-      const response = await authService.signup(username, password);
-      localStorage.setItem('token', response.token);
-      setToken(response.token);
-    } finally {
-      setLoading(false);
-    }
+    checkAuth();
+  }, []);
+
+  const login = async (email, password) => {
+    const response = await authService.login(email, password);
+    setToken(response.token); // This may not be necessary if using cookies
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    // Clear token and redirect
     setToken(null);
   };
 
@@ -52,9 +41,8 @@ export const AuthProvider = ({ children }) => {
     token,
     loading,
     login,
-    signup,
     logout,
-    isAuthenticated: !!token // Add this helper
+    isAuthenticated: !!token // Check if user is authenticated
   };
 
   return (
