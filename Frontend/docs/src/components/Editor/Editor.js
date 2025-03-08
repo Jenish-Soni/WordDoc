@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { initializeSocket, disconnectSocket } from '../../services/socket';
 import { documentService } from '../../services/api';
@@ -17,6 +17,10 @@ const Editor = () => {
   const quillRef = useRef(null);
   const socketRef = useRef(null);
   const isLocalUpdate = useRef(false);
+  const [grammarSuggestions, setGrammarSuggestions] = useState([]);
+  const [isChecking, setIsChecking] = useState(false);
+  const grammarCheckTimeout = useRef(null);
+  const navigate = useNavigate();
 
   // Memoize saveContent function
   const saveContent = useCallback(async (contentToSave) => {
@@ -110,11 +114,72 @@ const Editor = () => {
     }
   };
 
-  // Handle content changes
-  const handleChange = (newContent) => {
+  // Update the grammar check function
+  const checkGrammar = useCallback(async (text) => {
+    try {
+      setIsChecking(true);
+      // Make sure token exists
+      if (!token) {
+        console.error('No auth token available');
+        navigate('/login');
+        return;
+      }
+
+      const response = await fetch('http://localhost:5000/api/grammar/check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // Make sure token is properly formatted
+        },
+        body: JSON.stringify({ 
+          text: text.replace(/<[^>]*>/g, '').trim() 
+        }),
+        credentials: 'include' // Include credentials if using cookies
+      });
+      
+      if (response.status === 403) {
+        // Handle unauthorized access
+        console.error('Authentication failed');
+        navigate('/login');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Grammar check failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.suggestions) {
+        setGrammarSuggestions(data.suggestions);
+      }
+    } catch (error) {
+      console.error('Grammar check error:', error);
+      setGrammarSuggestions([]);
+    } finally {
+      setIsChecking(false);
+    }
+  }, [token, navigate]);
+
+  // Update handleChange to debounce properly
+  const handleChange = useCallback((newContent) => {
     isLocalUpdate.current = true;
     setContent(newContent);
     
+    // Clear existing timeout
+    if (grammarCheckTimeout.current) {
+      clearTimeout(grammarCheckTimeout.current);
+    }
+
+    // Only check grammar if there's actual content
+    const plainText = newContent.replace(/<[^>]*>/g, '').trim();
+    if (plainText) {
+      grammarCheckTimeout.current = setTimeout(() => {
+        checkGrammar(plainText);
+      }, 1000);
+    } else {
+      setGrammarSuggestions([]);
+    }
+
     if (socketRef.current) {
       socketRef.current.emit('edit-document', {
         documentId: id,
@@ -122,11 +187,19 @@ const Editor = () => {
       });
     }
 
-    // Reset the local update flag after a short delay
     setTimeout(() => {
       isLocalUpdate.current = false;
     }, 100);
-  };
+  }, [id, checkGrammar]);
+
+  // Add this effect to clean up timeouts
+  useEffect(() => {
+    return () => {
+      if (grammarCheckTimeout.current) {
+        clearTimeout(grammarCheckTimeout.current);
+      }
+    };
+  }, []);
 
   // Setup debounced save on content change
   useEffect(() => {
@@ -139,19 +212,18 @@ const Editor = () => {
     return () => clearTimeout(timeoutId);
   }, [content, saveContent]);
 
-  const modules = {
-    toolbar: {
-      container: [
-        [{ 'header': [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'align': [] }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        ['blockquote', 'code-block'],
-        ['link', 'image'],
-        ['clean']
-      ],
-    },
+  // Custom Quill modules to avoid deprecation warning
+  const modules = useMemo(() => ({
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'color': [] }, { 'background': [] }],
+      [{ 'align': [] }],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      ['blockquote', 'code-block'],
+      ['link', 'image'],
+      ['clean']
+    ],
     clipboard: {
       matchVisual: false
     },
@@ -160,7 +232,7 @@ const Editor = () => {
       maxStack: 500,
       userOnly: true
     }
-  };
+  }), []);
 
   const formats = [
     'header',
@@ -207,6 +279,35 @@ const Editor = () => {
             preserveWhitespace={true}
           />
         </div>
+      </div>
+
+      {/* Show loading state in grammar suggestions */}
+      <div className={`grammar-suggestions ${grammarSuggestions.length > 0 || isChecking ? 'active' : ''}`}>
+        <h3>
+          Grammar Suggestions
+          {isChecking && <span className="checking-indicator">Checking...</span>}
+        </h3>
+        {isChecking ? (
+          <div className="checking-message">Analyzing text...</div>
+        ) : grammarSuggestions.length > 0 ? (
+          <ul>
+            {grammarSuggestions.map((suggestion, index) => (
+              <li key={index} className="suggestion-item">
+                <div className="suggestion-original">
+                  Original: <span>{suggestion.original}</span>
+                </div>
+                <div className="suggestion-correction">
+                  Correction: <span>{suggestion.correction}</span>
+                </div>
+                <div className="suggestion-explanation">
+                  {suggestion.explanation}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="no-suggestions">No suggestions</div>
+        )}
       </div>
     </div>
   );

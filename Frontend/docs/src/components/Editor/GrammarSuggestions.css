@@ -1,0 +1,39 @@
+.grammar-suggestions {
+    position: fixed;
+    right: 20px;
+    top: 100px;
+    width: 300px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 16px;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+}
+
+.grammar-suggestions h3 {
+    margin: 0 0 12px 0;
+    color: #333;
+    font-size: 16px;
+}
+
+.suggestion-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+}
+
+.error-text {
+    color: #dc2626;
+    text-decoration: line-through;
+    margin-right: 8px;
+}
+
+.suggestion-arrow {
+    color: #666;
+    margin: 0 8px;
+}
+
+.correction-text {
+    color: #059669;
+} 
