@@ -8,17 +8,37 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(null);
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if the user is logged in by checking the cookie
     const checkAuth = async () => {
+      const storedToken = localStorage.getItem('token');
+      
+      if (!storedToken) {
+        setLoading(false);
+        return;
+      }
+
       try {
-        const response = await authService.checkAuth(); // Create this endpoint to verify token
-        setToken(response.token); // Set token if valid
+        // Set token in auth header before checking
+        authService.setAuthHeader(storedToken);
+        const response = await authService.checkAuth();
+        
+        if (response.authenticated) {
+          setToken(response.token || storedToken);
+        } else {
+          // Clear invalid token
+          setToken(null);
+          localStorage.removeItem('token');
+        }
       } catch (error) {
-        console.error('Not authenticated:', error);
+        console.error('Authentication check failed:', error);
+        // Don't clear token on 404 error (endpoint not found)
+        if (error.response?.status !== 404) {
+          setToken(null);
+          localStorage.removeItem('token');
+        }
       } finally {
         setLoading(false);
       }
@@ -28,13 +48,29 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    const response = await authService.login(email, password);
-    setToken(response.token); // This may not be necessary if using cookies
+    try {
+      const response = await authService.login(email, password);
+      if (response.token) {
+        localStorage.setItem('token', response.token);
+        setToken(response.token);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login failed:', error);
+      throw error;
+    }
   };
 
-  const logout = () => {
-    // Clear token and redirect
-    setToken(null);
+  const logout = async () => {
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      setToken(null);
+      localStorage.removeItem('token');
+    }
   };
 
   const value = {
@@ -42,12 +78,14 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     logout,
-    isAuthenticated: !!token // Check if user is authenticated
+    isAuthenticated: !!token
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
-}; 
+};
+
+export default AuthProvider; 

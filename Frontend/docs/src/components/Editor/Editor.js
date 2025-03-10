@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { initializeSocket, disconnectSocket } from '../../services/socket';
-import { documentService } from '../../services/api';
+import { documentService, grammarService } from '../../services/api';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import './Editor.css';
@@ -118,47 +118,21 @@ const Editor = () => {
   const checkGrammar = useCallback(async (text) => {
     try {
       setIsChecking(true);
-      // Make sure token exists
-      if (!token) {
-        console.error('No auth token available');
-        navigate('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:5000/api/grammar/check', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // Make sure token is properly formatted
-        },
-        body: JSON.stringify({ 
-          text: text.replace(/<[^>]*>/g, '').trim() 
-        }),
-        credentials: 'include' // Include credentials if using cookies
-      });
-      
-      if (response.status === 403) {
-        // Handle unauthorized access
-        console.error('Authentication failed');
-        navigate('/login');
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`Grammar check failed: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await grammarService.checkGrammar(text);
       if (data.suggestions) {
         setGrammarSuggestions(data.suggestions);
       }
     } catch (error) {
       console.error('Grammar check error:', error);
+      if (error.response?.status === 403) {
+        // Handle unauthorized access
+        navigate('/login');
+      }
       setGrammarSuggestions([]);
     } finally {
       setIsChecking(false);
     }
-  }, [token, navigate]);
+  }, [navigate]);
 
   // Update handleChange to debounce properly
   const handleChange = useCallback((newContent) => {

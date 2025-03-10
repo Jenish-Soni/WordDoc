@@ -3,6 +3,7 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../model/user");
+const verifyToken = require('../middleware/verifyToken');
 
 const router = express.Router();
 
@@ -51,7 +52,7 @@ router.post("/login", async (req, res) => {
 });
 
 // 🔹 Verify Token Middleware
-const verifyToken = (req, res, next) => {
+const verifyTokenMiddleware = (req, res, next) => {
   const token = req.headers["authorization"];
   if (!token) return res.status(403).json({ error: "No token provided" });
 
@@ -111,8 +112,24 @@ router.post('/signup', async (req, res) => {
     }
 });
 
-router.get('/check-auth', verifyToken, (req, res) => {
+router.get('/check-auth', verifyTokenMiddleware, (req, res) => {
     res.json({ token: req.token }); // Send back the token if valid
 });
 
-module.exports = { router, verifyToken };
+// Add this new route for checking authentication
+router.get('/check', verifyToken, async (req, res) => {
+    try {
+        // If verifyToken middleware passes, user is authenticated
+        res.json({ 
+            authenticated: true,
+            token: req.token // Send back the token if you want to refresh it
+        });
+    } catch (error) {
+        res.status(401).json({ 
+            authenticated: false,
+            message: 'Invalid token' 
+        });
+    }
+});
+
+module.exports = { router, verifyToken: verifyTokenMiddleware };
